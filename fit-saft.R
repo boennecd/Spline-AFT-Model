@@ -29,7 +29,7 @@ sourceCpp("splines.cpp", embeddedR = FALSE)
 #   beta: estimated AFT parameters.
 #   gamma: estimated splines coefficients.
 saft_fit <- function(y, X, event, n_knots, gl_dat, basis_type = c("bs", "ns"),
-                     use_integrate = FALSE, maxit = 1000L, check_grads = TRUE){
+                     use_integrate = FALSE, maxit = 1000L, check_grads = FALSE){
   # get the knot placement
   knots <- quantile(y[event > 0], 1:n_knots / (n_knots + 1))
   b_knots <- range(y, 0)

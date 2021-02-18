@@ -45,7 +45,7 @@ Type 'q()' to quit R.
 +   res_bs <- saft_fit(y = y, X = X, event = event, n_knots = 2, gl_dat = gl_dat,
 +                      basis_type = "bs"))
    user  system elapsed 
-  3.982   0.008   3.990 
+  2.035   0.004   2.040 
 > res_bs$coefs
           rxLev       rxLev+5FU             sex           age_c        obstruct 
     -0.03319203     -0.19955858      0.06334079      0.10275162      0.58151835 
@@ -63,7 +63,7 @@ factor(extent)3 factor(extent)4            surg           node4          gamma1
 +   res_ns <- saft_fit(y = y, X = X, event = event, n_knots = 4, gl_dat = gl_dat,
 +                      basis_type = "ns"))
    user  system elapsed 
-  3.092   0.000   3.092 
+    1.4     0.0     1.4 
 > res_ns$coefs
           rxLev       rxLev+5FU             sex           age_c        obstruct 
      0.01493506     -0.12867535      0.02292319      0.11321380      0.31930750 
@@ -109,7 +109,7 @@ Xfactor(extent)4            Xsurg           Xnode4
 +                          gl_dat = gl_dat, use_integrate = TRUE,
 +                          basis_type = "ns", check_grads = FALSE))
    user  system elapsed 
- 18.334   0.000  18.335 
+ 18.109   0.000  18.110 
 > rbind(res_ns$coefs, res_ns_int$coefs)
           rxLev  rxLev+5FU        sex     age_c  obstruct     perfor    adhere
 [1,] 0.01493506 -0.1286754 0.02292319 0.1132138 0.3193075 -0.2299108 0.2039561
@@ -130,4 +130,4 @@ Gauss–Legendre quadrature             R's integrate
 > 
 > proc.time()
    user  system elapsed 
- 32.788   0.293  33.099 
+ 29.070   0.314  29.380 
