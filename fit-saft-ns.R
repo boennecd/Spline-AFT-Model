@@ -44,15 +44,17 @@ saft_fit <- function(y, X, event, n_knots, gl_dat){
   b_knots <- range(y, 0)
 
   # evaluates the spline basis
+  ns_obj <- get_ns_spline(sort(c(knots, b_knots)), intercept = FALSE,
+                          do_log = FALSE)
   eval_basis <- function(x){
-    out <- suppressWarnings(bs(x, knots = knots, Boundary.knots = b_knots))
+    out <- ns_obj(x)
     cbind(1, out) # add intercept
   }
 
   # get starting values
   X <- X[, setdiff(colnames(X), "(Intercept)")]
   beta <- -coef(survreg(Surv(y, event) ~ X, dist = "exponential"))
-  gamma <- numeric(n_knots + 4)
+  gamma <- numeric(n_knots + 2)
   gamma[1] <- beta["(Intercept)"]
   beta <- beta[-1]
   n_beta <- length(beta)
@@ -92,14 +94,11 @@ saft_fit <- function(y, X, event, n_knots, gl_dat){
   }
 
   # optimize and return. First find better values for gamma
-  init <- optim(gamma, function(x) ll_func(c(beta, x)),
-                control = list(maxit = 10000L))
+  init <- optim(gamma, function(x) ll_func(c(beta, x)))
   gamma <- init$par
 
-  # then do the joint optimization
-  res <- optim(c(beta, gamma), ll_func, control = list(maxit = 10000L))
-  if(res$convergence != 0)
-    warning(sprintf("convergence code is %d", res$convergence))
+  # then do joint optimization
+  res <- optim(c(beta, gamma), ll_func, control = list(maxit = 1000L))
 
   coefs <- setNames(res$par, c(colnames(X), paste0("gamma", seq_len(n_gamma))))
   list(coefs = coefs, logLik = -res$value, optim = res, eval_basis = eval_basis,
@@ -108,15 +107,15 @@ saft_fit <- function(y, X, event, n_knots, gl_dat){
 
 # use the function
 system.time(
-  res <- saft_fit(y = y, X = X, event = event, n_knots = 2, gl_dat = gl_dat))
+  res <- saft_fit(y = y, X = X, event = event, n_knots = 4, gl_dat = gl_dat))
 res$coefs
 res$logLik
 
 # plot the spline
-jpeg("saft_fit-spline-bs.jpg", width = 600, height = 400)
+jpeg("saft_fit-spline-ns.jpg", width = 600, height = 400)
 ys <- seq(0, 2 * max(y), length.out = 1000)
 plot(ys, res$eval_basis(ys) %*% res$gamma, type = "l", ylim = c(-5.5, -2.75),
-     main = "saft_fit (bs)", xlab = "Time", ylab = "Spline", bty = "l")
+     main = "saft_fit (ns)", xlab = "Time", ylab = "Spline", bty = "l")
 grid()
 dev.off()
 
