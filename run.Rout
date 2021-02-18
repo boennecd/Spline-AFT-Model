@@ -45,49 +45,43 @@ Type 'q()' to quit R.
 +   res_bs <- saft_fit(y = y, X = X, event = event, n_knots = 2, gl_dat = gl_dat,
 +                      basis_type = "bs"))
    user  system elapsed 
- 10.809   0.012  10.821 
-Warning message:
-In saft_fit(y = y, X = X, event = event, n_knots = 2, gl_dat = gl_dat,  :
-  convergence code is 1
+  3.982   0.008   3.990 
 > res_bs$coefs
           rxLev       rxLev+5FU             sex           age_c        obstruct 
-   -0.075714058    -0.383617173     0.070732097     0.070713747     0.465867648 
+    -0.03319203     -0.19955858      0.06334079      0.10275162      0.58151835 
          perfor          adhere factor(differ)2 factor(differ)3 factor(extent)2 
-   -0.212802342     0.195443436    -0.141310921     0.146374191     0.403070593 
+    -0.24636202      0.04370215     -0.27112880      0.11367747      0.29354861 
 factor(extent)3 factor(extent)4            surg           node4          gamma1 
-    1.042028751     1.410979149     0.228500911     0.971978156    -3.254100926 
+     0.95986300      1.39783711      0.29433033      0.93147169     -5.53918378 
          gamma2          gamma3          gamma4          gamma5          gamma6 
-   -3.529316406    -0.129523089    -0.020395273     0.012880065     0.009916213 
+    -0.35151417      2.43786821      2.48229667      2.45939321      2.41061525 
 > res_bs$logLik
-[1] -1290.082
+[1] -1283.816
 > 
 > # estimate the model using natural cubic splines
 > system.time(
 +   res_ns <- saft_fit(y = y, X = X, event = event, n_knots = 4, gl_dat = gl_dat,
 +                      basis_type = "ns"))
    user  system elapsed 
-  9.183   0.001   9.183 
-Warning message:
-In saft_fit(y = y, X = X, event = event, n_knots = 4, gl_dat = gl_dat,  :
-  convergence code is 1
+  3.092   0.000   3.092 
 > res_ns$coefs
           rxLev       rxLev+5FU             sex           age_c        obstruct 
-    -0.01876730     -0.09302661      0.03958425      0.11244804      0.24874360 
+     0.01493506     -0.12867535      0.02292319      0.11321380      0.31930750 
          perfor          adhere factor(differ)2 factor(differ)3 factor(extent)2 
-    -0.24185959      0.24102320     -0.28193802      0.31716937      0.20274845 
+    -0.22991077      0.20395610     -0.21600481      0.36254346      0.15459525 
 factor(extent)3 factor(extent)4            surg           node4          gamma1 
-     0.94096868      1.31474354      0.31344948      0.99516422     -3.34380855 
+     0.88266763      1.18640778      0.28167830      0.94884837     -5.06951183 
          gamma2          gamma3          gamma4          gamma5          gamma6 
-     0.81452834      0.06662924      1.38019400     -2.22824194      1.48386191 
+     2.50743684      1.73905182      2.45373724      1.31909773      2.35209485 
 > res_ns$logLik
-[1] -1288.896
+[1] -1284.672
 > 
 > # plot the two estimated splines
 > jpeg("saft_fit-spline.jpg", width = 600, height = 400)
 > ys <- seq(0, 2 * max(y), length.out = 1000)
 > par(mar = c(5, 5, 1, 1))
 > with(res_bs, plot(
-+   ys, eval_basis(ys) %*% gamma, type = "l", ylim = c(-5.5, -2.75),
++   ys, eval_basis(ys) %*% gamma, type = "l", ylim = c(-6, -2.75),
 +   main = "", xlab = "Time", ylab = "Spline", bty = "l", yaxs = "i", xaxs = "i"))
 > with(res_ns, lines(ys, eval_basis(ys) %*% gamma, lty = 2))
 > grid()
@@ -113,30 +107,27 @@ Xfactor(extent)4            Xsurg           Xnode4
 > system.time(
 +   res_ns_int <- saft_fit(y = y, X = X, event = event, n_knots = 4,
 +                          gl_dat = gl_dat, use_integrate = TRUE,
-+                          basis_type = "ns"))
++                          basis_type = "ns", check_grads = FALSE))
    user  system elapsed 
-223.371   0.001 223.368 
-Warning message:
-In saft_fit(y = y, X = X, event = event, n_knots = 4, gl_dat = gl_dat,  :
-  convergence code is 1
+ 18.334   0.000  18.335 
 > rbind(res_ns$coefs, res_ns_int$coefs)
-           rxLev   rxLev+5FU        sex     age_c  obstruct     perfor
-[1,] -0.01876730 -0.09302661 0.03958425 0.1124480 0.2487436 -0.2418596
-[2,] -0.03429115 -0.13394001 0.02133121 0.1291172 0.2477313 -0.2709359
-        adhere factor(differ)2 factor(differ)3 factor(extent)2 factor(extent)3
-[1,] 0.2410232      -0.2819380       0.3171694       0.2027485       0.9409687
-[2,] 0.2136287      -0.2864709       0.3302840       0.2291042       0.9673545
-     factor(extent)4      surg     node4    gamma1    gamma2     gamma3
-[1,]        1.314744 0.3134495 0.9951642 -3.343809 0.8145283 0.06662924
-[2,]        1.293758 0.2936691 1.0203355 -3.312160 0.6880413 0.09592596
-       gamma4    gamma5   gamma6
-[1,] 1.380194 -2.228242 1.483862
-[2,] 1.342544 -2.246330 1.443341
+          rxLev  rxLev+5FU        sex     age_c  obstruct     perfor    adhere
+[1,] 0.01493506 -0.1286754 0.02292319 0.1132138 0.3193075 -0.2299108 0.2039561
+[2,] 0.01491958 -0.1287088 0.02294579 0.1131900 0.3193091 -0.2298811 0.2038812
+     factor(differ)2 factor(differ)3 factor(extent)2 factor(extent)3
+[1,]      -0.2160048       0.3625435       0.1545953       0.8826676
+[2,]      -0.2159427       0.3626085       0.1544535       0.8826194
+     factor(extent)4      surg     node4    gamma1   gamma2   gamma3   gamma4
+[1,]        1.186408 0.2816783 0.9488484 -5.069512 2.507437 1.739052 2.453737
+[2,]        1.186302 0.2816346 0.9488579 -5.069629 2.507744 1.739106 2.453743
+       gamma5   gamma6
+[1,] 1.319098 2.352095
+[2,] 1.319542 2.352064
 > c(`Gauss–Legendre quadrature` = res_ns$logLik,
 +   `R's integrate` = res_ns_int$logLik)
 Gauss–Legendre quadrature             R's integrate 
-                -1288.896                 -1289.110 
+                -1284.672                 -1284.674 
 > 
 > proc.time()
    user  system elapsed 
-251.051   0.307 251.336 
+ 32.788   0.293  33.099 

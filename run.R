@@ -39,7 +39,7 @@ jpeg("saft_fit-spline.jpg", width = 600, height = 400)
 ys <- seq(0, 2 * max(y), length.out = 1000)
 par(mar = c(5, 5, 1, 1))
 with(res_bs, plot(
-  ys, eval_basis(ys) %*% gamma, type = "l", ylim = c(-5.5, -2.75),
+  ys, eval_basis(ys) %*% gamma, type = "l", ylim = c(-6, -2.75),
   main = "", xlab = "Time", ylab = "Spline", bty = "l", yaxs = "i", xaxs = "i"))
 with(res_ns, lines(ys, eval_basis(ys) %*% gamma, lty = 2))
 grid()
@@ -54,7 +54,7 @@ logLik(survreg_res)
 system.time(
   res_ns_int <- saft_fit(y = y, X = X, event = event, n_knots = 4,
                          gl_dat = gl_dat, use_integrate = TRUE,
-                         basis_type = "ns"))
+                         basis_type = "ns", check_grads = FALSE))
 rbind(res_ns$coefs, res_ns_int$coefs)
 c(`Gauss–Legendre quadrature` = res_ns$logLik,
   `R's integrate` = res_ns_int$logLik)

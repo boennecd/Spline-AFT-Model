@@ -18,6 +18,8 @@ sourceCpp("splines.cpp", embeddedR = FALSE)
 #   basis_type: type of basis to use.
 #   use_integrate: logical for whether to use R's integrate function or
 #                  Gauss–Legendre quadrature.
+#   maxit: maximum number of iterations to pass to optim.
+#   check_grads: TRUE if gradients should be checked.
 #
 # Returns:
 #   coefs: coefficient estimates.
@@ -26,9 +28,8 @@ sourceCpp("splines.cpp", embeddedR = FALSE)
 #   eval_basis: function evaluate the basis functions.
 #   beta: estimated AFT parameters.
 #   gamma: estimated splines coefficients.
-#   maxit: maximum number of iterations to pass to optim.
 saft_fit <- function(y, X, event, n_knots, gl_dat, basis_type = c("bs", "ns"),
-                     use_integrate = FALSE, maxit = 1000L){
+                     use_integrate = FALSE, maxit = 1000L, check_grads = TRUE){
   # get the knot placement
   knots <- quantile(y[event > 0], 1:n_knots / (n_knots + 1))
   b_knots <- range(y, 0)
@@ -44,9 +45,10 @@ saft_fit <- function(y, X, event, n_knots, gl_dat, basis_type = c("bs", "ns"),
       # get point and assign function to evaluate the basis functions
       bs_ptr <- get_bs_ptr(knots = knots, boundary_knots = b_knots,
                            intercept = FALSE)
-      eval_basis <- function(x, gamma){
-        eval_spline_basis_fill(x, bs_ptr, Bmat)
-        gamma[1] + drop(Bmat %*% gamma[-1]) # account for the intercept
+      eval_basis <- function(x, gamma, ders = 0L){
+        eval_spline_basis_fill(x, bs_ptr, Bmat, ders = ders)
+        # account for the intercept
+        gamma[1] * (ders == 0L) + drop(Bmat %*% gamma[-1])
       }
 
       # function to return
@@ -61,9 +63,10 @@ saft_fit <- function(y, X, event, n_knots, gl_dat, basis_type = c("bs", "ns"),
       # get point and assign function to evaluate the basis functions
       ns_ptr <- get_ns_ptr(knots = knots, boundary_knots = b_knots,
                            intercept = FALSE)
-      eval_basis <- function(x, gamma){
-        eval_spline_basis_fill(x, ns_ptr, Bmat)
-        gamma[1] + drop(Bmat %*% gamma[-1]) # account for the intercept
+      eval_basis <- function(x, gamma, ders = 0L){
+        eval_spline_basis_fill(x, ns_ptr, Bmat, ders = ders)
+        # account for the intercept
+        gamma[1] * (ders == 0L) + drop(Bmat %*% gamma[-1])
       }
 
       # function to return
@@ -123,14 +126,66 @@ saft_fit <- function(y, X, event, n_knots, gl_dat, basis_type = c("bs", "ns"),
     l1 + l2
   }
 
+  # assign gradient of the negative log likelihood function
+  d_ll_func <- function(par){
+    beta <- head(par, n_beta)
+    gamma <- tail(par, n_gamma)
+
+    # handle terms from the hazard
+    eta <- drop(X %*% beta)
+    w <- exp(eta)
+    w_y <- w * y
+
+    fac_beta <- event * (1 + eval_basis(w_y, gamma, ders = 1L) * w_y)
+    d_beta <- -drop(fac_beta %*% X)
+
+    eval_basis(w_y, gamma, ders = 0L)
+    d_gamma <- -c(sum(event), drop(event %*% Bmat))
+
+    # handle terms from the survival function
+    survival_terms <- mapply(function(x, wei){
+      w_y_x <- w_y * x
+      fac <- w * exp(eval_basis(w_y_x, gamma)) * wei * .5 * y
+      d_gamma <- c(sum(fac), fac %*% Bmat)
+
+      d_log_lambda_0 <- eval_basis(w_y_x, gamma, ders = 1L)
+      fac_beta <- fac * (1 + d_log_lambda_0 * w_y_x)
+      d_beta_terms <- fac_beta %*% X
+      c(d_beta_terms, d_gamma)
+    }, x = gl_node, w = gl_dat$weight)
+
+    survival_terms <- rowSums(survival_terms)
+
+    c(d_beta + head(survival_terms, n_beta),
+      d_gamma + tail(survival_terms, n_gamma))
+  }
+
+  # check gradients if requested
+  if(check_grads){
+    truth <- numDeriv::grad(ll_func, c(beta, gamma))
+    func_grads <- d_ll_func(c(beta, gamma))
+    stopifnot(isTRUE(all.equal(truth, func_grads, check.attributes = FALSE,
+                               tolerance = 1e-4)))
+  }
+
   # optimize and return. First find better values for gamma
-  init <- optim(gamma, function(x) ll_func(c(beta, x)))
+  init <- optim(gamma, function(x) ll_func(c(beta, x)),
+                function(x) tail(d_ll_func(c(beta, x)), n_gamma),
+                method = "BFGS")
   gamma <- init$par
 
   # then do joint optimization
-  res <- optim(c(beta, gamma), ll_func, control = list(maxit = maxit))
+  res <- optim(c(beta, gamma), ll_func, d_ll_func,
+               control = list(maxit = maxit), method = "BFGS")
   if(res$convergence != 0)
     warning(sprintf("convergence code is %d", res$convergence))
+
+  if(check_grads){
+    truth <- numDeriv::grad(ll_func, res$par)
+    func_grads <- d_ll_func(res$par)
+    stopifnot(isTRUE(all.equal(truth, func_grads, check.attributes = FALSE,
+                               tolerance = 1e-4)))
+  }
 
   coefs <- setNames(res$par, c(colnames(X), paste0("gamma", seq_len(n_gamma))))
   list(coefs = coefs, logLik = -res$value, optim = res,

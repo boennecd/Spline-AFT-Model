@@ -3,11 +3,11 @@
 We provide a few scripts to estimate spline-based accelerated failure time 
 models as suggested by Pang et al. (2021). 
 The examples can be run by running `R CMD BATCH --no-restore --no-save run.R` 
-which produces the output `run.Rout` and the plots. The `fit-saft.R` file loads 
-the packages that are needed and assigns a function to estimate the model. 
-
-The estimation method does not provide gradients and therefore the estimation 
-time might be greatly reduced using the gradients as well. 
+which produces the output [run.Rout](./run.Rout) and the plots. The 
+[fit-saft.R](./fit-saft.R) file loads 
+the packages that are needed, compiles the C++ code, and assigns a function 
+to estimate the model. The [renv.lock](./renv.lock) file can be used with 
+the renv package to get all the packages that have been used.
 
 ## References
 Pang, M, Platt, RW, Schuster, T, Abrahamowicz, M. 2021. “Spline‐based 

@@ -331,13 +331,14 @@ Rcpp::XPtr<splines::ns>
 
 // evaluates the spline at x.
 // [[Rcpp::export(rng = false)]]
-Rcpp::NumericMatrix eval_spline_basis(arma::vec const &x, SEXP basis_ptr);
+Rcpp::NumericMatrix eval_spline_basis(arma::vec const &x, SEXP basis_ptr,
+                                      int const ders = 0);
 
 // evaluates the spline at x like eval_spline_basis but using pre-allocated
 // memory.
 // [[Rcpp::export(rng = false)]]
 void eval_spline_basis_fill(arma::vec const &x, SEXP basis_ptr,
-                            Rcpp::NumericMatrix out){
+                            Rcpp::NumericMatrix out, int const ders = 0){
   Rcpp::XPtr<splines::basisMixin> basis(basis_ptr);
   size_t const n_x = x.size(),
              n_col = basis->get_n_basis();
@@ -349,18 +350,19 @@ void eval_spline_basis_fill(arma::vec const &x, SEXP basis_ptr,
 
   double *oi = &out[0];
   for(unsigned i = 0; i < n_x; ++i, ++oi){
-    basis->operator()(wrk, x[i]);
+    basis->operator()(wrk, x[i], ders);
     for(unsigned j = 0; j < n_col; ++j)
       oi[j * n_x] = wrk[j];
   }
 }
 
-Rcpp::NumericMatrix eval_spline_basis(arma::vec const &x, SEXP basis_ptr){
+Rcpp::NumericMatrix eval_spline_basis(arma::vec const &x, SEXP basis_ptr,
+                                      int const ders){
   Rcpp::XPtr<splines::basisMixin> basis(basis_ptr);
   size_t const n_x = x.size(),
              n_col = basis->get_n_basis();
   Rcpp::NumericMatrix out(n_x, n_col);
-  eval_spline_basis_fill(x, basis_ptr, out);
+  eval_spline_basis_fill(x, basis_ptr, out, ders);
   return out;
 }
 
@@ -381,6 +383,18 @@ local({
   eval_spline_basis_fill(xs, f, out)
   stopifnot(isTRUE(all.equal(out,
                              truth, check.attributes = FALSE)))
+
+  # check derivs
+  truth <- t(sapply(xs, function(x) numDeriv::jacobian(
+    splines::ns, x, knots = knots, Boundary.knots = b_knots,
+    intercept = FALSE)))
+
+  stopifnot(isTRUE(all.equal(eval_spline_basis(xs, f, ders = 1L),
+                             truth, check.attributes = FALSE)))
+
+  eval_spline_basis_fill(xs, f, out, ders = 1L)
+  stopifnot(isTRUE(all.equal(out,
+                             truth, check.attributes = FALSE)))
 })
 
 # simple test that bs splines works
@@ -398,6 +412,18 @@ local({
 
   out <- matrix(0., length(xs), NCOL(truth))
   eval_spline_basis_fill(xs, f, out)
+  stopifnot(isTRUE(all.equal(out,
+                             truth, check.attributes = FALSE)))
+
+  # check derivs
+  truth <- t(sapply(xs, function(x) suppressWarnings(numDeriv::jacobian(
+    splines::bs, x, knots = knots, Boundary.knots = b_knots,
+    intercept = FALSE))))
+
+  stopifnot(isTRUE(all.equal(eval_spline_basis(xs, f, ders = 1L),
+                             truth, check.attributes = FALSE)))
+
+  eval_spline_basis_fill(xs, f, out, ders = 1L)
   stopifnot(isTRUE(all.equal(out,
                              truth, check.attributes = FALSE)))
 })
