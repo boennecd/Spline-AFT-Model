@@ -3,6 +3,10 @@ library(splines)
 library(survival)
 library(SimSurvNMarker)
 
+# source  we need
+library(Rcpp)
+sourceCpp("splines.cpp", embeddedR = FALSE)
+
 # estimates a spline-based AFT.
 #
 # Args:
@@ -32,16 +36,19 @@ saft_fit <- function(y, X, event, n_knots, gl_dat, basis_type = c("bs", "ns"),
   # assign function to evaluate the spline basis
   basis_type <- basis_type[1]
   switch(basis_type,
-    bs =
+    bs = {
+      bs_ptr <- get_bs_ptr(knots = knots, boundary_knots = b_knots,
+                           intercept = FALSE)
       eval_basis <- function(x){
-        out <- suppressWarnings(bs(x, knots = knots, Boundary.knots = b_knots))
+        out <- eval_spline_basis(x, bs_ptr)
         cbind(1, out) # add intercept
-      },
+      }
+    },
     ns = {
-      ns_obj <- get_ns_spline(sort(c(knots, b_knots)), intercept = FALSE,
-                              do_log = FALSE)
+      ns_ptr <- bs_ptr <- get_ns_ptr(knots = knots, boundary_knots = b_knots,
+                                     intercept = FALSE)
       eval_basis <- function(x){
-        out <- ns_obj(x)
+        out <- eval_spline_basis(x, bs_ptr)
         cbind(1, out) # add intercept
       }
     },

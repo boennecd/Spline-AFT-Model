@@ -18,6 +18,8 @@ Type 'demo()' for some demos, 'help()' for on-line help, or
 Type 'q()' to quit R.
 
 * Project '~/Dropbox/skole_backup/postdoc/Spline-AFT-Model' loaded. [renv 0.12.3]
+[Previously saved workspace restored]
+
 > # source the file with the estimation code
 > source("fit-saft.R")
 > 
@@ -45,7 +47,7 @@ Type 'q()' to quit R.
 +   res_bs <- saft_fit(y = y, X = X, event = event, n_knots = 2, gl_dat = gl_dat,
 +                      basis_type = "bs"))
    user  system elapsed 
- 40.145   0.020  40.165 
+ 12.230   0.008  12.238 
 Warning message:
 In saft_fit(y = y, X = X, event = event, n_knots = 2, gl_dat = gl_dat,  :
   convergence code is 1
@@ -66,7 +68,7 @@ factor(extent)3 factor(extent)4            surg           node4          gamma1
 +   res_ns <- saft_fit(y = y, X = X, event = event, n_knots = 4, gl_dat = gl_dat,
 +                      basis_type = "ns"))
    user  system elapsed 
- 10.297   0.000  10.297 
+ 10.399   0.000  10.400 
 Warning message:
 In saft_fit(y = y, X = X, event = event, n_knots = 4, gl_dat = gl_dat,  :
   convergence code is 1
@@ -115,7 +117,7 @@ Xfactor(extent)4            Xsurg           Xnode4
 +                          gl_dat = gl_dat, use_integrate = TRUE,
 +                          basis_type = "ns"))
    user  system elapsed 
-227.331   0.000 227.334 
+220.307   0.000 220.311 
 Warning message:
 In saft_fit(y = y, X = X, event = event, n_knots = 4, gl_dat = gl_dat,  :
   convergence code is 1
@@ -139,4 +141,4 @@ Gauss–Legendre quadrature             R's integrate
 > 
 > proc.time()
    user  system elapsed 
-278.787   0.111 278.871 
+250.398   0.306 250.700 
