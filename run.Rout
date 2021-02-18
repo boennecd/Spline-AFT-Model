@@ -1,0 +1,142 @@
+
+R version 3.6.3 (2020-02-29) -- "Holding the Windsock"
+Copyright (C) 2020 The R Foundation for Statistical Computing
+Platform: x86_64-pc-linux-gnu (64-bit)
+
+R is free software and comes with ABSOLUTELY NO WARRANTY.
+You are welcome to redistribute it under certain conditions.
+Type 'license()' or 'licence()' for distribution details.
+
+  Natural language support but running in an English locale
+
+R is a collaborative project with many contributors.
+Type 'contributors()' for more information and
+'citation()' on how to cite R or R packages in publications.
+
+Type 'demo()' for some demos, 'help()' for on-line help, or
+'help.start()' for an HTML browser interface to help.
+Type 'q()' to quit R.
+
+* Project '~/Dropbox/skole_backup/postdoc/Spline-AFT-Model' loaded. [renv 0.12.3]
+> # source the file with the estimation code
+> source("fit-saft.R")
+> 
+> # prepare colon data set
+> colon_use <- within(
++   colon[complete.cases(colon) & colon$etype==2, ], {
++     time <- time/365.25
++     age_c <- scale(age)
++   })
+> 
+> mf <- model.frame(time ~ rx + sex + age_c + obstruct + perfor + adhere +
++                     factor(differ) + factor(extent) + surg + node4,
++                   colon_use)
+> 
+> X <- model.matrix(terms(mf), mf)
+> 
+> y <- model.response(mf)
+> event <- colon_use$status
+> 
+> # get Gauss–Legendre quadrature node and weights
+> gl_dat <- get_gl_rule(50)
+> 
+> # estimate model using B-splines
+> system.time(
++   res_bs <- saft_fit(y = y, X = X, event = event, n_knots = 2, gl_dat = gl_dat,
++                      basis_type = "bs"))
+   user  system elapsed 
+ 40.145   0.020  40.165 
+Warning message:
+In saft_fit(y = y, X = X, event = event, n_knots = 2, gl_dat = gl_dat,  :
+  convergence code is 1
+> res_bs$coefs
+          rxLev       rxLev+5FU             sex           age_c        obstruct 
+   -0.075714058    -0.383617173     0.070732097     0.070713747     0.465867648 
+         perfor          adhere factor(differ)2 factor(differ)3 factor(extent)2 
+   -0.212802342     0.195443436    -0.141310921     0.146374191     0.403070593 
+factor(extent)3 factor(extent)4            surg           node4          gamma1 
+    1.042028751     1.410979149     0.228500911     0.971978156    -3.254100926 
+         gamma2          gamma3          gamma4          gamma5          gamma6 
+   -3.529316406    -0.129523089    -0.020395273     0.012880065     0.009916213 
+> res_bs$logLik
+[1] -1290.082
+> 
+> # estimate the model using natural cubic splines
+> system.time(
++   res_ns <- saft_fit(y = y, X = X, event = event, n_knots = 4, gl_dat = gl_dat,
++                      basis_type = "ns"))
+   user  system elapsed 
+ 10.297   0.000  10.297 
+Warning message:
+In saft_fit(y = y, X = X, event = event, n_knots = 4, gl_dat = gl_dat,  :
+  convergence code is 1
+> res_ns$coefs
+          rxLev       rxLev+5FU             sex           age_c        obstruct 
+    -0.01876730     -0.09302661      0.03958425      0.11244804      0.24874360 
+         perfor          adhere factor(differ)2 factor(differ)3 factor(extent)2 
+    -0.24185959      0.24102320     -0.28193802      0.31716937      0.20274845 
+factor(extent)3 factor(extent)4            surg           node4          gamma1 
+     0.94096868      1.31474354      0.31344948      0.99516422     -3.34380855 
+         gamma2          gamma3          gamma4          gamma5          gamma6 
+     0.81452834      0.06662924      1.38019400     -2.22824194      1.48386191 
+> res_ns$logLik
+[1] -1288.896
+> 
+> # plot the two estimated splines
+> jpeg("saft_fit-spline.jpg", width = 600, height = 400)
+> ys <- seq(0, 2 * max(y), length.out = 1000)
+> par(mar = c(5, 5, 1, 1))
+> with(res_bs, plot(
++   ys, eval_basis(ys) %*% gamma, type = "l", ylim = c(-5.5, -2.75),
++   main = "", xlab = "Time", ylab = "Spline", bty = "l", yaxs = "i", xaxs = "i"))
+> with(res_ns, lines(ys, eval_basis(ys) %*% gamma, lty = 2))
+> grid()
+> dev.off()
+null device 
+          1 
+> 
+> # compare with Weibull model. Should be the same as Pang et al. (2021).
+> survreg_res <- survreg(Surv(y, event) ~ X - 1)
+> coef(survreg_res)
+    X(Intercept)           XrxLev       XrxLev+5FU             Xsex 
+      3.35704624       0.04883450       0.37840444      -0.02538239 
+          Xage_c        Xobstruct          Xperfor          Xadhere 
+     -0.08765944      -0.23448106      -0.03654589      -0.17660104 
+Xfactor(differ)2 Xfactor(differ)3 Xfactor(extent)2 Xfactor(extent)3 
+      0.09561472      -0.18480493      -0.48145663      -0.96703733 
+Xfactor(extent)4            Xsurg           Xnode4 
+     -1.32132417      -0.19841858      -0.92013425 
+> logLik(survreg_res)
+'log Lik.' -1325.124 (df=16)
+> 
+> # check that we get the same with integrate
+> system.time(
++   res_ns_int <- saft_fit(y = y, X = X, event = event, n_knots = 4,
++                          gl_dat = gl_dat, use_integrate = TRUE,
++                          basis_type = "ns"))
+   user  system elapsed 
+227.331   0.000 227.334 
+Warning message:
+In saft_fit(y = y, X = X, event = event, n_knots = 4, gl_dat = gl_dat,  :
+  convergence code is 1
+> rbind(res_ns$coefs, res_ns_int$coefs)
+           rxLev   rxLev+5FU        sex     age_c  obstruct     perfor
+[1,] -0.01876730 -0.09302661 0.03958425 0.1124480 0.2487436 -0.2418596
+[2,] -0.03429115 -0.13394001 0.02133121 0.1291172 0.2477313 -0.2709359
+        adhere factor(differ)2 factor(differ)3 factor(extent)2 factor(extent)3
+[1,] 0.2410232      -0.2819380       0.3171694       0.2027485       0.9409687
+[2,] 0.2136287      -0.2864709       0.3302840       0.2291042       0.9673545
+     factor(extent)4      surg     node4    gamma1    gamma2     gamma3
+[1,]        1.314744 0.3134495 0.9951642 -3.343809 0.8145283 0.06662924
+[2,]        1.293758 0.2936691 1.0203355 -3.312160 0.6880413 0.09592596
+       gamma4    gamma5   gamma6
+[1,] 1.380194 -2.228242 1.483862
+[2,] 1.342544 -2.246330 1.443341
+> c(`Gauss–Legendre quadrature` = res_ns$logLik,
++   `R's integrate` = res_ns_int$logLik)
+Gauss–Legendre quadrature             R's integrate 
+                -1288.896                 -1289.110 
+> 
+> proc.time()
+   user  system elapsed 
+278.787   0.111 278.871 

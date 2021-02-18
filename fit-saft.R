@@ -3,25 +3,6 @@ library(splines)
 library(survival)
 library(SimSurvNMarker)
 
-# prepare colon data set
-colon_use <- within(
-  colon[complete.cases(colon) & colon$etype==2, ], {
-    time <- time/365.25
-    age_c <- scale(age)
-})
-
-mf <- model.frame(time ~ rx + sex + age_c + obstruct + perfor + adhere +
-                    factor(differ) + factor(extent) + surg + node4,
-                  colon_use)
-
-X <- model.matrix(terms(mf), mf)
-
-y <- model.response(mf)
-event <- colon_use$status
-
-# get Gauss–Legendre quadrature node and weights
-gl_dat <- get_gl_rule(50)
-
 # estimates a spline-based AFT.
 #
 # Args:
@@ -29,7 +10,10 @@ gl_dat <- get_gl_rule(50)
 #   X: design matrix for the fixed effects.
 #   event: event indicator.
 #   n_knots: number of knots for B-splines.
-#   gl_dat: Gauss–Legendre Quadrature node and weights
+#   gl_dat: Gauss–Legendre Quadrature node and weights.
+#   basis_type: type of basis to use.
+#   use_integrate: logical for whether to use R's integrate function or
+#                  Gauss–Legendre quadrature.
 #
 # Returns:
 #   coefs: coefficient estimates.
@@ -38,21 +22,39 @@ gl_dat <- get_gl_rule(50)
 #   eval_basis: function evaluate the basis functions.
 #   beta: estimated AFT parameters.
 #   gamma: estimated splines coefficients.
-saft_fit <- function(y, X, event, n_knots, gl_dat){
+#   maxit: maximum number of iterations to pass to optim.
+saft_fit <- function(y, X, event, n_knots, gl_dat, basis_type = c("bs", "ns"),
+                     use_integrate = FALSE, maxit = 1000L){
   # get the knot placement
   knots <- quantile(y[event > 0], 1:n_knots / (n_knots + 1))
   b_knots <- range(y, 0)
 
-  # evaluates the spline basis
-  eval_basis <- function(x){
-    out <- suppressWarnings(bs(x, knots = knots, Boundary.knots = b_knots))
-    cbind(1, out) # add intercept
-  }
+  # assign function to evaluate the spline basis
+  basis_type <- basis_type[1]
+  switch(basis_type,
+    bs =
+      eval_basis <- function(x){
+        out <- suppressWarnings(bs(x, knots = knots, Boundary.knots = b_knots))
+        cbind(1, out) # add intercept
+      },
+    ns = {
+      ns_obj <- get_ns_spline(sort(c(knots, b_knots)), intercept = FALSE,
+                              do_log = FALSE)
+      eval_basis <- function(x){
+        out <- ns_obj(x)
+        cbind(1, out) # add intercept
+      }
+    },
+    stop(sprintf("basis_type '%s' is no implemented", basis_type)))
 
   # get starting values
   X <- X[, setdiff(colnames(X), "(Intercept)")]
   beta <- -coef(survreg(Surv(y, event) ~ X, dist = "exponential"))
-  gamma <- numeric(n_knots + 4)
+  gamma <- switch(
+    basis_type,
+    bs = numeric(n_knots + 4),
+    ns = numeric(n_knots + 2),
+    stop(sprintf("basis_type '%s' is no implemented", basis_type)))
   gamma[1] <- beta["(Intercept)"]
   beta <- beta[-1]
   n_beta <- length(beta)
@@ -66,38 +68,42 @@ saft_fit <- function(y, X, event, n_knots, gl_dat){
     beta <- head(par, n_beta)
     gamma <- tail(par, n_gamma)
 
+    # handle terms from the hazard
     eta <- drop(X %*% beta)
     w <- exp(eta)
     l1 <- -sum(event * (eta + drop(eval_basis(w * y) %*% gamma)))
 
-    # use Gauss–Legendre Quadrature
-    l2 <- mapply(function(x, wei)
-      sum(w * exp(drop(eval_basis(w * y * x) %*% gamma)) * wei * .5 * y),
-      x = gl_node, w = gl_dat$weight)
-    l2 <- sum(l2)
-
-    # use R's integrate function
-    # l2 <- mapply(function(w, y){
-    #   out <- try(
-    #     integrate(function(z) exp(drop(eval_basis(w * z) %*% gamma)),
-    #               lower = 0, upper = y)$value, silent = TRUE)
-    #   if(inherits(out, "try-error"))
-    #     out <- Inf
-    #   out
-    # }, w = w, y = y)
-    # l2 <- sum(l2 * w)
+    # handle terms from the survival function
+    if(!use_integrate){
+      # use Gauss–Legendre quadrature
+      l2 <- mapply(function(x, wei)
+        sum(w * exp(drop(eval_basis(w * y * x) %*% gamma)) * wei * .5 * y),
+        x = gl_node, w = gl_dat$weight)
+      l2 <- sum(l2)
+    } else {
+      # use R's integrate function
+      l2 <- mapply(function(w, y){
+        out <- try(
+          integrate(function(z) exp(drop(eval_basis(w * z) %*% gamma)),
+                    lower = 0, upper = y,
+                    rel.tol = sqrt(.Machine$double.eps))$value, silent = TRUE)
+        if(inherits(out, "try-error"))
+          out <- Inf
+        out
+      }, w = w, y = y)
+      l2 <- sum(l2 * w)
+    }
 
     # cat(sprintf("l1: %.2f l2: %.2f sum: %.2f\n", l1, l2, l1 + l2))
     l1 + l2
   }
 
   # optimize and return. First find better values for gamma
-  init <- optim(gamma, function(x) ll_func(c(beta, x)),
-                control = list(maxit = 10000L))
+  init <- optim(gamma, function(x) ll_func(c(beta, x)))
   gamma <- init$par
 
-  # then do the joint optimization
-  res <- optim(c(beta, gamma), ll_func, control = list(maxit = 10000L))
+  # then do joint optimization
+  res <- optim(c(beta, gamma), ll_func, control = list(maxit = maxit))
   if(res$convergence != 0)
     warning(sprintf("convergence code is %d", res$convergence))
 
@@ -105,22 +111,3 @@ saft_fit <- function(y, X, event, n_knots, gl_dat){
   list(coefs = coefs, logLik = -res$value, optim = res, eval_basis = eval_basis,
        beta = head(coefs, n_beta), gamma = tail(coefs, n_gamma))
 }
-
-# use the function
-system.time(
-  res <- saft_fit(y = y, X = X, event = event, n_knots = 2, gl_dat = gl_dat))
-res$coefs
-res$logLik
-
-# plot the spline
-jpeg("saft_fit-spline-bs.jpg", width = 600, height = 400)
-ys <- seq(0, 2 * max(y), length.out = 1000)
-plot(ys, res$eval_basis(ys) %*% res$gamma, type = "l", ylim = c(-5.5, -2.75),
-     main = "saft_fit (bs)", xlab = "Time", ylab = "Spline", bty = "l")
-grid()
-dev.off()
-
-# compare with Weibull model
-survreg_res <- survreg(Surv(y, event) ~ X - 1)
-coef(survreg_res)
-logLik(survreg_res)
