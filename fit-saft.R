@@ -37,20 +37,38 @@ saft_fit <- function(y, X, event, n_knots, gl_dat, basis_type = c("bs", "ns"),
   basis_type <- basis_type[1]
   switch(basis_type,
     bs = {
+      # assign basis matrix we will use for memory while doing the log likelihood
+      # evaluations
+      Bmat <- matrix(0., NROW(X), n_knots + 3L)
+
+      # get point and assign function to evaluate the basis functions
       bs_ptr <- get_bs_ptr(knots = knots, boundary_knots = b_knots,
                            intercept = FALSE)
-      eval_basis <- function(x){
-        out <- eval_spline_basis(x, bs_ptr)
-        cbind(1, out) # add intercept
+      eval_basis <- function(x, gamma){
+        eval_spline_basis_fill(x, bs_ptr, Bmat)
+        gamma[1] + drop(Bmat %*% gamma[-1]) # account for the intercept
       }
+
+      # function to return
+      eval_basis_out <- function(x)
+        cbind(1, eval_spline_basis(x, bs_ptr))
     },
     ns = {
-      ns_ptr <- bs_ptr <- get_ns_ptr(knots = knots, boundary_knots = b_knots,
-                                     intercept = FALSE)
-      eval_basis <- function(x){
-        out <- eval_spline_basis(x, bs_ptr)
-        cbind(1, out) # add intercept
+      # assign basis matrix we will use for memory while doing the log likelihood
+      # evaluations
+      Bmat <- matrix(0., NROW(X), n_knots + 1L)
+
+      # get point and assign function to evaluate the basis functions
+      ns_ptr <- get_ns_ptr(knots = knots, boundary_knots = b_knots,
+                           intercept = FALSE)
+      eval_basis <- function(x, gamma){
+        eval_spline_basis_fill(x, ns_ptr, Bmat)
+        gamma[1] + drop(Bmat %*% gamma[-1]) # account for the intercept
       }
+
+      # function to return
+      eval_basis_out <- function(x)
+        cbind(1, eval_spline_basis(x, ns_ptr))
     },
     stop(sprintf("basis_type '%s' is no implemented", basis_type)))
 
@@ -78,20 +96,20 @@ saft_fit <- function(y, X, event, n_knots, gl_dat, basis_type = c("bs", "ns"),
     # handle terms from the hazard
     eta <- drop(X %*% beta)
     w <- exp(eta)
-    l1 <- -sum(event * (eta + drop(eval_basis(w * y) %*% gamma)))
+    l1 <- -sum(event * (eta + eval_basis(w * y, gamma)))
 
     # handle terms from the survival function
     if(!use_integrate){
       # use Gauss–Legendre quadrature
       l2 <- mapply(function(x, wei)
-        sum(w * exp(drop(eval_basis(w * y * x) %*% gamma)) * wei * .5 * y),
+        sum(w * exp(eval_basis(w * y * x, gamma)) * wei * .5 * y),
         x = gl_node, w = gl_dat$weight)
       l2 <- sum(l2)
     } else {
       # use R's integrate function
       l2 <- mapply(function(w, y){
         out <- try(
-          integrate(function(z) exp(drop(eval_basis(w * z) %*% gamma)),
+          integrate(function(z) exp(drop(eval_basis_out(w * z) %*% gamma)),
                     lower = 0, upper = y,
                     rel.tol = sqrt(.Machine$double.eps))$value, silent = TRUE)
         if(inherits(out, "try-error"))
@@ -115,6 +133,7 @@ saft_fit <- function(y, X, event, n_knots, gl_dat, basis_type = c("bs", "ns"),
     warning(sprintf("convergence code is %d", res$convergence))
 
   coefs <- setNames(res$par, c(colnames(X), paste0("gamma", seq_len(n_gamma))))
-  list(coefs = coefs, logLik = -res$value, optim = res, eval_basis = eval_basis,
-       beta = head(coefs, n_beta), gamma = tail(coefs, n_gamma))
+  list(coefs = coefs, logLik = -res$value, optim = res,
+       eval_basis = eval_basis_out, beta = head(coefs, n_beta),
+       gamma = tail(coefs, n_gamma))
 }

@@ -329,20 +329,38 @@ Rcpp::XPtr<splines::ns>
     new splines::ns(boundary_knots, knots, intercept), true);
 }
 
+// evaluates the spline at x.
 // [[Rcpp::export(rng = false)]]
-arma::mat eval_spline_basis(arma::vec const &x, SEXP basis_ptr){
+Rcpp::NumericMatrix eval_spline_basis(arma::vec const &x, SEXP basis_ptr);
+
+// evaluates the spline at x like eval_spline_basis but using pre-allocated
+// memory.
+// [[Rcpp::export(rng = false)]]
+void eval_spline_basis_fill(arma::vec const &x, SEXP basis_ptr,
+                            Rcpp::NumericMatrix out){
   Rcpp::XPtr<splines::basisMixin> basis(basis_ptr);
   size_t const n_x = x.size(),
              n_col = basis->get_n_basis();
 
-  arma::mat out(n_x, n_col);
+  if(static_cast<unsigned>(out.nrow()) != n_x or
+       static_cast<unsigned>(out.ncol()) != n_col)
+    throw std::invalid_argument("Invalid out matrix is passed");
   arma::vec wrk(n_col);
 
-  for(unsigned i = 0; i < n_x; ++i){
+  double *oi = &out[0];
+  for(unsigned i = 0; i < n_x; ++i, ++oi){
     basis->operator()(wrk, x[i]);
-    out.row(i) = wrk.t();
+    for(unsigned j = 0; j < n_col; ++j)
+      oi[j * n_x] = wrk[j];
   }
+}
 
+Rcpp::NumericMatrix eval_spline_basis(arma::vec const &x, SEXP basis_ptr){
+  Rcpp::XPtr<splines::basisMixin> basis(basis_ptr);
+  size_t const n_x = x.size(),
+             n_col = basis->get_n_basis();
+  Rcpp::NumericMatrix out(n_x, n_col);
+  eval_spline_basis_fill(x, basis_ptr, out);
   return out;
 }
 
@@ -358,6 +376,11 @@ local({
 
   stopifnot(isTRUE(all.equal(eval_spline_basis(xs, f),
                              truth, check.attributes = FALSE)))
+
+  out <- matrix(0., length(xs), NCOL(truth))
+  eval_spline_basis_fill(xs, f, out)
+  stopifnot(isTRUE(all.equal(out,
+                             truth, check.attributes = FALSE)))
 })
 
 # simple test that bs splines works
@@ -372,5 +395,10 @@ local({
 
   stopifnot(isTRUE(all.equal(eval_spline_basis(xs, f), truth,
                              check.attributes = FALSE)))
+
+  out <- matrix(0., length(xs), NCOL(truth))
+  eval_spline_basis_fill(xs, f, out)
+  stopifnot(isTRUE(all.equal(out,
+                             truth, check.attributes = FALSE)))
 })
 */

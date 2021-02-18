@@ -2,7 +2,7 @@
 
 We provide a few scripts to estimate spline-based accelerated failure time 
 models as suggested by Pang et al. (2021). 
-The examples can be run by running `R CMD BATCH run.R` 
+The examples can be run by running `R CMD BATCH --no-restore --no-save run.R` 
 which produces the output `run.Rout` and the plots. The `fit-saft.R` file loads 
 the packages that are needed and assigns a function to estimate the model. 
 
