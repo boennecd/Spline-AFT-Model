@@ -6,6 +6,7 @@
 #include <algorithm> // lower_bound
 #include <cmath> // isnan
 #include <stdexcept> // invalid_argument
+#include <memory.h>
 
 inline void check_splines
   (const arma::vec &boundary_knots, const arma::vec &interior_knots,
@@ -428,3 +429,204 @@ local({
                              truth, check.attributes = FALSE)))
 })
 */
+
+// the class we use the C++ version saft_fit
+
+class saft_fitter {
+  arma::mat const X;
+  arma::vec const y;
+  arma::vec const event;
+
+  double const n_events = arma::sum(event);
+
+  std::unique_ptr<splines::basisMixin> base;
+
+  unsigned const n_obs = X.n_cols,
+                n_beta = X.n_rows,
+                n_gamm = base->get_n_basis() + 1L;
+
+  // working memory
+  mutable arma::vec wrk_vec = arma::vec(base->get_n_basis());
+
+  inline double dot_prod_beta
+    (unsigned const idx, arma::vec const &beta) const noexcept {
+    double out(0);
+    double const * __restrict__ xi = X.colptr(idx),
+                 * __restrict__ bi = beta.memptr();
+    for(unsigned i = 0; i < n_beta; ++i)
+      out += *xi++ * *bi++;
+    return out;
+  }
+
+  inline double eval_basis
+    (unsigned idx, double const point, arma::vec const &gamma,
+     int const ders = 0L) const noexcept {
+    double const * __restrict__ gi = gamma.begin();
+    double out(*gi++ * (ders == 0)); // the intercept
+    base->operator()(wrk_vec, point, ders);
+    double const * wi = wrk_vec.begin();
+    for(unsigned i = 1; i < n_gamm; ++i)
+      out += *wi++ * *gi++;
+
+    return out;
+  }
+
+public:
+  enum supported_basis { ns, bs };
+
+  saft_fitter(arma::mat const &X, arma::vec const &y, arma::vec const &event,
+              arma::vec const &knots, arma::vec const &boundary_knots,
+              supported_basis const which_base):
+    X(X.t()), // we work with X transpose
+    y(y), event(event),
+    base(([&]() -> std::unique_ptr<splines::basisMixin> {
+      switch(which_base){
+      case ns:
+        return std::unique_ptr<splines::basisMixin>(
+          new splines::ns(boundary_knots, knots, false));
+      case bs:
+        return std::unique_ptr<splines::basisMixin>(
+          new splines::bs(boundary_knots, knots, false));
+      default:
+        throw std::invalid_argument("which_base not supported");
+      }
+
+      return { nullptr };
+    })()) {
+    if(y.size() != n_obs)
+      throw std::invalid_argument("invalid y");
+    if(event.size() != n_obs)
+      throw std::invalid_argument("invalid event");
+  }
+
+  double eval_log_likelihood(arma::vec const &beta, arma::vec const &gamma,
+                             arma::vec nodes, arma::vec weights){
+    if(beta.size() != n_beta)
+      throw std::invalid_argument("invalid beta");
+    if(gamma.size() != n_gamm)
+      throw std::invalid_argument("invalid gamma");
+
+    // rescale and relocate the nodes and weights
+    nodes = (nodes + 1) * .5;
+    weights *= .5;
+
+    unsigned const n_nodes = nodes.size();
+
+    // compute the log-likelihood observation by observation
+    double out(0.);
+    for(unsigned i = 0; i < n_obs; ++i){
+      double const eta = dot_prod_beta(i, beta),
+                     w = std::exp(eta),
+                   w_y = w * y[i];
+
+      if(event[i] > 0)
+        // add the log hazard terms
+        out -= eta + eval_basis(i, w_y, gamma);
+
+      // add the terms from the log survival function
+      for(unsigned j = 0; j < n_nodes; ++j){
+        double const w_y_x = w_y * nodes[j];
+        out += w_y * weights[j] * std::exp(eval_basis(i, w_y_x, gamma));
+      }
+    }
+
+    return out;
+  }
+
+  arma::vec eval_log_likelihood_gr(
+      arma::vec const &beta, arma::vec const &gamma, arma::vec nodes,
+      arma::vec weights){
+    if(beta.size() != n_beta)
+      throw std::invalid_argument("invalid beta");
+    if(gamma.size() != n_gamm)
+      throw std::invalid_argument("invalid gamma");
+
+    // rescale and relocate the nodes and weights
+    nodes = (nodes + 1) * .5;
+    weights *= .5;
+
+    unsigned const n_nodes = nodes.size();
+    arma::vec out(n_beta + n_gamm, arma::fill::zeros);
+    double * const __restrict__ d_beta_begin  = out.memptr(),
+           * const __restrict__ d_gamma_begin = d_beta_begin + n_beta;
+
+    // hazard terms
+    *d_gamma_begin = -n_events;
+
+    // compute the log-likelihood observation by observation
+    for(unsigned i = 0; i < n_obs; ++i){
+      double const eta = dot_prod_beta(i, beta),
+                     w = std::exp(eta),
+                   w_y = w * y[i];
+
+      if(event[i] > 0){
+        // add the log hazard terms
+        double const fac_beta = 1 + eval_basis(i, w_y, gamma, 1L) * w_y,
+                     * xj = X.colptr(i);
+        for(unsigned j = 0; j < n_beta; ++j)
+          d_beta_begin[j] -= fac_beta * *xj++;
+
+        base->operator()(wrk_vec, w_y);
+        double const * wj = wrk_vec.begin();
+        for(unsigned j = 1; j < n_gamm; ++j)
+          d_gamma_begin[j] -= *wj++;
+      }
+
+      // add the terms from the log survival function
+      for(unsigned j = 0; j < n_nodes; ++j){
+        double const w_y_x = w_y * nodes[j],
+                       fac = w_y * weights[j] *
+                         std::exp(eval_basis(i, w_y_x, gamma));
+        *d_gamma_begin += fac;
+        double const * wj = wrk_vec.begin();
+        for(unsigned j = 1; j < n_gamm; ++j)
+          d_gamma_begin[j] += fac * *wj++;
+
+        double const d_log_lambda0 = eval_basis(i, w_y_x, gamma, 1L),
+                          fac_beta = fac * (1 + d_log_lambda0 * w_y_x);
+        double const * xj = X.colptr(i);
+        for(unsigned j = 0; j < n_beta; ++j)
+          d_beta_begin[j] += fac_beta * *xj++;
+      }
+    }
+
+    return out;
+  }
+};
+
+// [[Rcpp::export(rng = false)]]
+Rcpp::XPtr<saft_fitter> get_saft_fitter_ptr
+  (arma::mat const &X, arma::vec const &y, arma::vec const &event,
+   arma::vec const &knots, arma::vec const &boundary_knots,
+   std::string const which_base){
+  saft_fitter::supported_basis which_base_arg;
+  if(which_base == "ns")
+    which_base_arg = saft_fitter::supported_basis::ns;
+  else if(which_base == "bs")
+    which_base_arg = saft_fitter::supported_basis::bs;
+  else
+    throw std::invalid_argument("which_base is not supported");
+
+  return Rcpp::XPtr<saft_fitter>(new saft_fitter(
+    X, y, event, knots, boundary_knots, which_base_arg));
+}
+
+// [[Rcpp::export(rng = false)]]
+double eval_log_likelihood_cpp
+  (arma::vec const &beta, arma::vec const &gamma,
+   arma::vec const &nodes, arma::vec const &weights,
+   SEXP ptr){
+  Rcpp::XPtr<saft_fitter> saft_fitter_ptr(ptr);
+
+  return saft_fitter_ptr->eval_log_likelihood(beta, gamma, nodes, weights);
+}
+
+// [[Rcpp::export(rng = false)]]
+arma::vec eval_log_likelihood_grad_cpp
+  (arma::vec const &beta, arma::vec const &gamma,
+   arma::vec const &nodes, arma::vec const &weights,
+   SEXP ptr){
+  Rcpp::XPtr<saft_fitter> saft_fitter_ptr(ptr);
+
+  return saft_fitter_ptr->eval_log_likelihood_gr(beta, gamma, nodes, weights);
+}

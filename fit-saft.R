@@ -192,3 +192,84 @@ saft_fit <- function(y, X, event, n_knots, gl_dat, basis_type = c("bs", "ns"),
        eval_basis = eval_basis_out, beta = head(coefs, n_beta),
        gamma = tail(coefs, n_gamma))
 }
+
+# estimates a spline-based AFT with C++.
+#
+# The interface is like saft_fit but the backend uses C++.
+saft_fit_cpp <- function(
+  y, X, event, n_knots, gl_dat, basis_type = c("bs", "ns"),
+  use_integrate = FALSE, maxit = 1000L, check_grads = FALSE){
+  # get the knot placement
+  knots <- quantile(y[event > 0], 1:n_knots / (n_knots + 1))
+  b_knots <- range(y, 0)
+
+  basis_type <- basis_type[1]
+
+  # get starting values
+  X <- X[, setdiff(colnames(X), "(Intercept)")]
+  beta <- -coef(survreg(Surv(y, event) ~ X, dist = "exponential"))
+  gamma <- switch(
+    basis_type,
+    bs = numeric(n_knots + 4),
+    ns = numeric(n_knots + 2),
+    stop(sprintf("basis_type '%s' is no implemented", basis_type)))
+  gamma[1] <- beta["(Intercept)"]
+  beta <- beta[-1]
+  n_beta <- length(beta)
+  n_gamma <- length(gamma)
+
+  # get a pointer to the C++ object
+  cpp_ptr <- get_saft_fitter_ptr(
+    X = X, y = y, event = event, knots = knots, boundary_knots = b_knots,
+    which_base = basis_type)
+
+  # assign negative log likelihood function
+  ll_func <- function(par){
+    beta <- head(par, n_beta)
+    gamma <- tail(par, n_gamma)
+
+    eval_log_likelihood_cpp(beta = beta, gamma = gamma, nodes = gl_dat$node,
+                            weights = gl_dat$weight, ptr = cpp_ptr)
+  }
+
+  # assign gradient of the negative log likelihood function
+  d_ll_func <- function(par){
+    beta <- head(par, n_beta)
+    gamma <- tail(par, n_gamma)
+
+    drop(eval_log_likelihood_grad_cpp(
+      beta = beta, gamma = gamma, nodes = gl_dat$node, weights = gl_dat$weight,
+      ptr = cpp_ptr))
+  }
+
+  # check gradients if requested
+  if(check_grads){
+    truth <- numDeriv::grad(ll_func, c(beta, gamma))
+    func_grads <- d_ll_func(c(beta, gamma))
+    stopifnot(isTRUE(all.equal(truth, func_grads, check.attributes = FALSE,
+                               tolerance = 1e-4)))
+  }
+
+  # optimize and return. First find better values for gamma
+  init <- optim(gamma, function(x) ll_func(c(beta, x)),
+                function(x) tail(d_ll_func(c(beta, x)), n_gamma),
+                method = "BFGS")
+  gamma <- init$par
+
+  # then do joint optimization
+  res <- optim(c(beta, gamma), ll_func, d_ll_func,
+               control = list(maxit = maxit), method = "BFGS")
+  if(res$convergence != 0)
+    warning(sprintf("convergence code is %d", res$convergence))
+
+  if(check_grads){
+    truth <- numDeriv::grad(ll_func, res$par)
+    func_grads <- d_ll_func(res$par)
+    stopifnot(isTRUE(all.equal(truth, func_grads, check.attributes = FALSE,
+                               tolerance = 1e-4)))
+  }
+
+  coefs <- setNames(res$par, c(colnames(X), paste0("gamma", seq_len(n_gamma))))
+  list(coefs = coefs, logLik = -res$value, optim = res,
+       beta = head(coefs, n_beta), gamma = tail(coefs, n_gamma))
+}

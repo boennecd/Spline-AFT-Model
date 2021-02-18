@@ -27,12 +27,26 @@ system.time(
 res_bs$coefs
 res_bs$logLik
 
+# we can also use C++ which is faster
+system.time(
+  res_bs_cpp <- saft_fit_cpp(y = y, X = X, event = event, n_knots = 2,
+                             gl_dat = gl_dat, basis_type = "bs"))
+
+all.equal(res_bs[c("coefs", "par")], res_bs_cpp[c("coefs", "par")])
+
 # estimate the model using natural cubic splines
 system.time(
   res_ns <- saft_fit(y = y, X = X, event = event, n_knots = 4, gl_dat = gl_dat,
                      basis_type = "ns"))
 res_ns$coefs
 res_ns$logLik
+
+# again, we can also use C++
+system.time(
+  res_ns_cpp <- saft_fit_cpp(y = y, X = X, event = event, n_knots = 4,
+                             gl_dat = gl_dat, basis_type = "ns"))
+
+all.equal(res_ns[c("coefs", "par")], res_ns_cpp[c("coefs", "par")])
 
 # plot the two estimated splines
 jpeg("saft_fit-spline.jpg", width = 600, height = 400)
