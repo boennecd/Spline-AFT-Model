@@ -96,6 +96,11 @@ void SplineBasis::operator()(
     for (size_t j = 0; j < (size_t)order; j++) {
       out(j+io) = double(0); // R_NaN;
     }*/
+  } if(ders == 1L){ // faster first order derivative
+    first_deriv(wrk, x);
+    for (uword i = 0; i < wrk.n_elem; i++)
+      out(i + io) = wrk(i);
+
   } else if (ders > 0) { /* slow method for derivatives */
     for(uword i = 0; i < (size_t)order; i++) {
       for(uword j = 0; j < (size_t)order; j++)
@@ -163,9 +168,9 @@ double SplineBasis::slow_evaluate(const double x, int nder) const
 void SplineBasis::basis_funcs(vec &b, const double x) const {
   diff_table(x, ordm1);
   b(0) = 1;
-  for (uword j = 1; j <= (uword)ordm1; j++) {
+  for (int j = 1; j <= ordm1; j++) {
     double saved(0);
-    for (size_t r = 0; r < j; r++) { // do not divide by zero
+    for (int r = 0; r < j; r++) { // do not divide by zero
       double const den = rdel(r) + ldel(j - 1 - r);
       if(den != 0) {
         double const term = b(r)/den;
@@ -174,7 +179,36 @@ void SplineBasis::basis_funcs(vec &b, const double x) const {
       } else {
         if(r != 0 || rdel(r) != 0)
           b(r) = saved;
-        saved = double(0);
+        saved = 0.;
+      }
+    }
+    b(j) = saved;
+  }
+}
+
+void SplineBasis::first_deriv(vec &b, const double x) const {
+  diff_table(x, ordm1);
+  b(0) = 1;
+  for (int j = 1; j <= ordm1; j++) {
+    bool const is_final = j == ordm1;
+    double saved(0);
+    for (int r = 0; r < j; r++) { // do not divide by zero
+      double const den = rdel(r) + ldel(j - 1 - r);
+      if(den != 0) {
+        if(is_final){
+          double const term = ordm1 * b(r) / den;
+          b(r) = saved - term;
+          saved = term;
+          continue;
+        }
+
+        double const term = b(r)/den;
+        b(r) = saved + rdel(r) * term;
+        saved = ldel(j - 1 - r) * term;
+      } else {
+        if(r != 0 || rdel(r) != 0)
+          b(r) = saved;
+        saved = 0.;
       }
     }
     b(j) = saved;

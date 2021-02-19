@@ -59,6 +59,17 @@ with(res_ns, lines(ys, eval_basis(ys) %*% gamma, lty = 2))
 grid()
 dev.off()
 
+# plot the estimated hazards
+jpeg("saft_fit-hazard.jpg", width = 600, height = 400)
+ys <- seq(0, 2 * max(y), length.out = 1000)
+par(mar = c(5, 5, 1, 1))
+with(res_bs, plot(
+  ys, exp(eval_basis(ys) %*% gamma), type = "l", ylim = c(0, .08),
+  main = "", xlab = "Time", ylab = "Spline", bty = "l", yaxs = "i", xaxs = "i"))
+with(res_ns, lines(ys, exp(eval_basis(ys) %*% gamma), lty = 2))
+grid()
+dev.off()
+
 # compare with Weibull model. Should be the same as Pang et al. (2021).
 survreg_res <- survreg(Surv(y, event) ~ X - 1)
 coef(survreg_res)

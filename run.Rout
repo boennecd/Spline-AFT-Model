@@ -45,7 +45,7 @@ Type 'q()' to quit R.
 +   res_bs <- saft_fit(y = y, X = X, event = event, n_knots = 2, gl_dat = gl_dat,
 +                      basis_type = "bs"))
    user  system elapsed 
-  2.098   0.000   2.098 
+  1.787   0.008   1.795 
 > res_bs$coefs
           rxLev       rxLev+5FU             sex           age_c        obstruct 
     -0.03319203     -0.19955858      0.06334079      0.10275162      0.58151835 
@@ -63,7 +63,7 @@ factor(extent)3 factor(extent)4            surg           node4          gamma1
 +   res_bs_cpp <- saft_fit_cpp(y = y, X = X, event = event, n_knots = 2,
 +                              gl_dat = gl_dat, basis_type = "bs"))
    user  system elapsed 
-  1.711   0.000   1.711 
+  1.406   0.000   1.406 
 > 
 > all.equal(res_bs[c("coefs", "par")], res_bs_cpp[c("coefs", "par")])
 [1] TRUE
@@ -73,7 +73,7 @@ factor(extent)3 factor(extent)4            surg           node4          gamma1
 +   res_ns <- saft_fit(y = y, X = X, event = event, n_knots = 4, gl_dat = gl_dat,
 +                      basis_type = "ns"))
    user  system elapsed 
-  1.443   0.000   1.456 
+  1.366   0.000   1.365 
 > res_ns$coefs
           rxLev       rxLev+5FU             sex           age_c        obstruct 
      0.01493506     -0.12867535      0.02292319      0.11321380      0.31930750 
@@ -91,7 +91,7 @@ factor(extent)3 factor(extent)4            surg           node4          gamma1
 +   res_ns_cpp <- saft_fit_cpp(y = y, X = X, event = event, n_knots = 4,
 +                              gl_dat = gl_dat, basis_type = "ns"))
    user  system elapsed 
-  1.268   0.004   1.278 
+  1.171   0.000   1.171 
 > 
 > all.equal(res_ns[c("coefs", "par")], res_ns_cpp[c("coefs", "par")])
 [1] TRUE
@@ -104,6 +104,19 @@ factor(extent)3 factor(extent)4            surg           node4          gamma1
 +   ys, eval_basis(ys) %*% gamma, type = "l", ylim = c(-6, -2.75),
 +   main = "", xlab = "Time", ylab = "Spline", bty = "l", yaxs = "i", xaxs = "i"))
 > with(res_ns, lines(ys, eval_basis(ys) %*% gamma, lty = 2))
+> grid()
+> dev.off()
+null device 
+          1 
+> 
+> # plot the estimated hazards
+> jpeg("saft_fit-hazard.jpg", width = 600, height = 400)
+> ys <- seq(0, 2 * max(y), length.out = 1000)
+> par(mar = c(5, 5, 1, 1))
+> with(res_bs, plot(
++   ys, exp(eval_basis(ys) %*% gamma), type = "l", ylim = c(0, .08),
++   main = "", xlab = "Time", ylab = "Spline", bty = "l", yaxs = "i", xaxs = "i"))
+> with(res_ns, lines(ys, exp(eval_basis(ys) %*% gamma), lty = 2))
 > grid()
 > dev.off()
 null device 
@@ -129,7 +142,7 @@ Xfactor(extent)4            Xsurg           Xnode4
 +                          gl_dat = gl_dat, use_integrate = TRUE,
 +                          basis_type = "ns", check_grads = FALSE))
    user  system elapsed 
- 18.527   0.000  18.527 
+ 18.329   0.000  18.329 
 > rbind(res_ns$coefs, res_ns_int$coefs)
           rxLev  rxLev+5FU        sex     age_c  obstruct     perfor    adhere
 [1,] 0.01493506 -0.1286754 0.02292319 0.1132138 0.3193075 -0.2299108 0.2039561
@@ -150,4 +163,4 @@ Gauss–Legendre quadrature             R's integrate
 > 
 > proc.time()
    user  system elapsed 
- 33.039   0.321  33.408 
+ 32.200   0.310  32.504 
