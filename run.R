@@ -65,7 +65,8 @@ ys <- seq(0, 2 * max(y), length.out = 1000)
 par(mar = c(5, 5, 1, 1))
 with(res_bs, plot(
   ys, exp(eval_basis(ys) %*% gamma), type = "l", ylim = c(0, .08),
-  main = "", xlab = "Time", ylab = "Spline", bty = "l", yaxs = "i", xaxs = "i"))
+  main = "", xlab = "Time", ylab = "Baseline hazard", bty = "l", yaxs = "i",
+  xaxs = "i"))
 with(res_ns, lines(ys, exp(eval_basis(ys) %*% gamma), lty = 2))
 grid()
 dev.off()

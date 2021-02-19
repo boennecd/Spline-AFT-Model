@@ -96,18 +96,11 @@ void SplineBasis::operator()(
     for (size_t j = 0; j < (size_t)order; j++) {
       out(j+io) = double(0); // R_NaN;
     }*/
-  } if(ders == 1L){ // faster first order derivative
-    first_deriv(wrk, x);
+  } if(ders > 0L){ // faster first order derivative
+    derivs(wrk, x, ders);
     for (uword i = 0; i < wrk.n_elem; i++)
       out(i + io) = wrk(i);
 
-  } else if (ders > 0) { /* slow method for derivatives */
-    for(uword i = 0; i < (size_t)order; i++) {
-      for(uword j = 0; j < (size_t)order; j++)
-        a(j) = 0;
-      a(i) = 1;
-      out(i + io) = slow_evaluate(x, ders);
-    }
   } else { /* fast method for value */
     basis_funcs(wrk, x);
     for (uword i = 0; i < wrk.n_elem; i++)
@@ -142,29 +135,6 @@ void SplineBasis::diff_table(const double x, const int ndiff) const {
   }
 }
 
-double SplineBasis::slow_evaluate(const double x, int nder) const
-{
-  int ti = curs,
-     lpt, apt, rpt, inner,
-   outer = ordm1;
-  if (boundary && nder == ordm1) /* value is arbitrary */
-    return 0;
-  while(nder--) {  // FIXME: divides by zero
-    for(inner = outer, apt = 0, lpt = ti - outer; inner--; apt++, lpt++)
-      a(apt) = (double)outer * (a(apt + 1) - a(apt)) /
-        (knots(lpt + outer) - knots(lpt));
-    outer--;
-  }
-  diff_table(x, outer);
-  while(outer--)
-    for(apt = 0, lpt = outer, rpt = 0, inner = outer + 1;
-        inner--; lpt--, rpt++, apt++)
-      // FIXME: divides by zero
-      a(apt) = (a(apt + 1) * ldel(lpt) + a(apt) * rdel(rpt)) /
-        (rdel(rpt) + ldel(lpt));
-  return a(0);
-}
-
 void SplineBasis::basis_funcs(vec &b, const double x) const {
   diff_table(x, ordm1);
   b(0) = 1;
@@ -186,17 +156,19 @@ void SplineBasis::basis_funcs(vec &b, const double x) const {
   }
 }
 
-void SplineBasis::first_deriv(vec &b, const double x) const {
+void SplineBasis::derivs(vec &b, const double x, int const ders) const {
   diff_table(x, ordm1);
   b(0) = 1;
   for (int j = 1; j <= ordm1; j++) {
-    bool const is_final = j == ordm1;
+    bool const needs_derivs = j >= order - ders;
     double saved(0);
     for (int r = 0; r < j; r++) { // do not divide by zero
       double const den = rdel(r) + ldel(j - 1 - r);
       if(den != 0) {
-        if(is_final){
-          double const term = ordm1 * b(r) / den;
+        if(needs_derivs){
+          // follow https://math.stackexchange.com/a/2119661/253239
+          // and http://mat.fsv.cvut.cz/gcg/sbornik/prochazkova.pdf
+          double const term = j * b(r) / den;
           b(r) = saved - term;
           saved = term;
           continue;

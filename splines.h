@@ -65,7 +65,7 @@ private:
   double slow_evaluate(const double x, int nder) const;
   /* fast evaluation of basis functions */
   void basis_funcs(vec &b, const double x) const;
-  void first_deriv(vec &b, const double x) const;
+  void derivs(vec &b, const double x, int const ders) const;
 };
 
 class bs final : public SplineBasis {
