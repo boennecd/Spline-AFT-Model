@@ -96,7 +96,7 @@ void SplineBasis::operator()(
     for (size_t j = 0; j < (size_t)order; j++) {
       out(j+io) = double(0); // R_NaN;
     }*/
-  } if(ders > 0L){ // faster first order derivative
+  } if(ders > 0L){ // faster derivative
     derivs(wrk, x, ders);
     for (uword i = 0; i < wrk.n_elem; i++)
       out(i + io) = wrk(i);

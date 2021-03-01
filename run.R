@@ -34,6 +34,14 @@ system.time(
 
 all.equal(res_bs[c("coefs", "par")], res_bs_cpp[c("coefs", "par")])
 
+# we can also estimate the B-spline model where we do not fix the boundary knots
+system.time(
+  res_bs_non_fix <- saft_fit(
+    y = y, X = X, event = event, n_knots = 2, gl_dat = gl_dat,
+    basis_type = "bs", fix_boundary_knots = FALSE, maxit = 10000L))
+res_bs_non_fix$coefs
+res_bs_non_fix$logLik
+
 # estimate the model using natural cubic splines
 system.time(
   res_ns <- saft_fit(y = y, X = X, event = event, n_knots = 4, gl_dat = gl_dat,
@@ -55,7 +63,8 @@ par(mar = c(5, 5, 1, 1))
 with(res_bs, plot(
   ys, eval_basis(ys) %*% gamma, type = "l", ylim = c(-6, -2.75),
   main = "", xlab = "Time", ylab = "Spline", bty = "l", yaxs = "i", xaxs = "i"))
-with(res_ns, lines(ys, eval_basis(ys) %*% gamma, lty = 2))
+with(res_ns        , lines(ys, eval_basis(ys) %*% gamma, lty = 2))
+with(res_bs_non_fix, lines(ys, eval_basis(ys) %*% gamma, lty = 3))
 grid()
 dev.off()
 

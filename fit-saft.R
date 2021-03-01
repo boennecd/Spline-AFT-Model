@@ -20,6 +20,7 @@ sourceCpp("splines.cpp", embeddedR = FALSE)
 #                  Gauss–Legendre quadrature.
 #   maxit: maximum number of iterations to pass to optim.
 #   check_grads: TRUE if gradients should be checked.
+#   fix_boundary_knots: TRUE if the boundary knots should be fixed.
 #
 # Returns:
 #   coefs: coefficient estimates.
@@ -29,7 +30,8 @@ sourceCpp("splines.cpp", embeddedR = FALSE)
 #   beta: estimated AFT parameters.
 #   gamma: estimated splines coefficients.
 saft_fit <- function(y, X, event, n_knots, gl_dat, basis_type = c("bs", "ns"),
-                     use_integrate = FALSE, maxit = 1000L, check_grads = FALSE){
+                     use_integrate = FALSE, maxit = 1000L, check_grads = FALSE,
+                     fix_boundary_knots = TRUE){
   # get the knot placement
   knots <- quantile(y[event > 0], 1:n_knots / (n_knots + 1))
   b_knots <- range(y, 0)
@@ -43,8 +45,12 @@ saft_fit <- function(y, X, event, n_knots, gl_dat, basis_type = c("bs", "ns"),
       Bmat <- matrix(0., NROW(X), n_knots + 3L)
 
       # get point and assign function to evaluate the basis functions
-      bs_ptr <- get_bs_ptr(knots = knots, boundary_knots = b_knots,
-                           intercept = FALSE)
+      bs_ptr <- NULL
+      set_ptr <- function(b_knots_arg = b_knots)
+        bs_ptr <<- get_bs_ptr(knots = knots, boundary_knots = b_knots_arg,
+                             intercept = FALSE)
+      set_ptr()
+
       eval_basis <- function(x, gamma, ders = 0L){
         eval_spline_basis_fill(x, bs_ptr, Bmat, ders = ders)
         # account for the intercept
@@ -61,8 +67,12 @@ saft_fit <- function(y, X, event, n_knots, gl_dat, basis_type = c("bs", "ns"),
       Bmat <- matrix(0., NROW(X), n_knots + 1L)
 
       # get point and assign function to evaluate the basis functions
-      ns_ptr <- get_ns_ptr(knots = knots, boundary_knots = b_knots,
-                           intercept = FALSE)
+      ns_ptr <- NULL
+      set_ptr <- function(b_knots_arg = b_knots)
+        ns_ptr <<- get_ns_ptr(knots = knots, boundary_knots = b_knots_arg,
+                              intercept = FALSE)
+      set_ptr()
+
       eval_basis <- function(x, gamma, ders = 0L){
         eval_spline_basis_fill(x, ns_ptr, Bmat, ders = ders)
         # account for the intercept
@@ -99,7 +109,11 @@ saft_fit <- function(y, X, event, n_knots, gl_dat, basis_type = c("bs", "ns"),
     # handle terms from the hazard
     eta <- drop(X %*% beta)
     w <- exp(eta)
-    l1 <- -sum(event * (eta + eval_basis(w * y, gamma)))
+    w_y <- w * y
+    if(!fix_boundary_knots)
+      set_ptr(range(0, w_y))
+
+    l1 <- -sum(event * (eta + eval_basis(w_y, gamma)))
 
     # handle terms from the survival function
     if(!use_integrate){
@@ -130,6 +144,9 @@ saft_fit <- function(y, X, event, n_knots, gl_dat, basis_type = c("bs", "ns"),
   d_ll_func <- function(par){
     beta <- head(par, n_beta)
     gamma <- tail(par, n_gamma)
+
+    if(!fix_boundary_knots)
+      stop("gradient should not be called with 'fix_boundary_knots' equal to FALSE")
 
     # handle terms from the hazard
     eta <- drop(X %*% beta)
@@ -169,14 +186,15 @@ saft_fit <- function(y, X, event, n_knots, gl_dat, basis_type = c("bs", "ns"),
   }
 
   # optimize and return. First find better values for gamma
+  method <- if(fix_boundary_knots) "BFGS" else "Nelder-Mead"
   init <- optim(gamma, function(x) ll_func(c(beta, x)),
                 function(x) tail(d_ll_func(c(beta, x)), n_gamma),
-                method = "BFGS")
+                method = method)
   gamma <- init$par
 
   # then do joint optimization
   res <- optim(c(beta, gamma), ll_func, d_ll_func,
-               control = list(maxit = maxit), method = "BFGS")
+               control = list(maxit = maxit), method = method)
   if(res$convergence != 0)
     warning(sprintf("convergence code is %d", res$convergence))
 
@@ -186,6 +204,10 @@ saft_fit <- function(y, X, event, n_knots, gl_dat, basis_type = c("bs", "ns"),
     stopifnot(isTRUE(all.equal(truth, func_grads, check.attributes = FALSE,
                                tolerance = 1e-4)))
   }
+
+  if(!fix_boundary_knots)
+    # make sure the boundary knots are set
+    ll_func(res$par)
 
   coefs <- setNames(res$par, c(colnames(X), paste0("gamma", seq_len(n_gamma))))
   list(coefs = coefs, logLik = -res$value, optim = res,
