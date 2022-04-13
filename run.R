@@ -3,7 +3,7 @@ source("fit-saft.R")
 
 # prepare colon data set
 colon_use <- within(
-  colon[complete.cases(colon) & colon$etype==2, ], {
+  survival::colon[complete.cases(survival::colon) & survival::colon$etype==2, ], {
     time <- time/365.25
     age_c <- scale(age)
   })
