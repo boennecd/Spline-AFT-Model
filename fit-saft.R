@@ -83,16 +83,16 @@ saft_fit <- function(y, X, event, n_knots, gl_dat, basis_type = c("bs", "ns"),
       eval_basis_out <- function(x)
         cbind(1, eval_spline_basis(x, ns_ptr))
     },
-    stop(sprintf("basis_type '%s' is no implemented", basis_type)))
+    stop(sprintf("basis_type '%s' is not implemented", basis_type)))
 
   # get starting values
-  X <- X[, setdiff(colnames(X), "(Intercept)")]
+  X <- X[, setdiff(colnames(X), "(Intercept)"), drop=FALSE]
   beta <- -coef(survreg(Surv(y, event) ~ X, dist = "exponential"))
   gamma <- switch(
     basis_type,
     bs = numeric(n_knots + 4),
     ns = numeric(n_knots + 2),
-    stop(sprintf("basis_type '%s' is no implemented", basis_type)))
+    stop(sprintf("basis_type '%s' is not implemented", basis_type)))
   gamma[1] <- beta["(Intercept)"]
   beta <- beta[-1]
   n_beta <- length(beta)
@@ -210,9 +210,13 @@ saft_fit <- function(y, X, event, n_knots, gl_dat, basis_type = c("bs", "ns"),
     ll_func(res$par)
 
   coefs <- setNames(res$par, c(colnames(X), paste0("gamma", seq_len(n_gamma))))
-  list(coefs = coefs, logLik = -res$value, optim = res,
-       eval_basis = eval_basis_out, beta = head(coefs, n_beta),
-       gamma = tail(coefs, n_gamma))
+  hess <- optimHess(coefs, ll_func, d_ll_func)
+  vcov <- try(solve(hess))
+
+  structure(list(coefs = coefs, logLik = -res$value, optim = res,
+                 eval_basis = eval_basis_out, beta = head(coefs, n_beta),
+                 gamma = tail(coefs, n_gamma), vcov = vcov),
+            class="saft_fit")
 }
 
 # estimates a spline-based AFT with C++.
@@ -228,7 +232,7 @@ saft_fit_cpp <- function(
   basis_type <- basis_type[1]
 
   # get starting values
-  X <- X[, setdiff(colnames(X), "(Intercept)")]
+  X <- X[, setdiff(colnames(X), "(Intercept)"), drop=FALSE]
   beta <- -coef(survreg(Surv(y, event) ~ X, dist = "exponential"))
   gamma <- switch(
     basis_type,
@@ -292,6 +296,32 @@ saft_fit_cpp <- function(
   }
 
   coefs <- setNames(res$par, c(colnames(X), paste0("gamma", seq_len(n_gamma))))
-  list(coefs = coefs, logLik = -res$value, optim = res,
-       beta = head(coefs, n_beta), gamma = tail(coefs, n_gamma))
+  hess <- optimHess(coefs, ll_func, d_ll_func)
+  vcov <- try(solve(hess))
+
+  structure(list(coefs = coefs, logLik = -res$value, optim = res,
+                 beta = head(coefs, n_beta), gamma = tail(coefs, n_gamma), vcov = vcov),
+            class="saft_fit")
+
 }
+
+vcov.saft_fit <- function(object, ...) object$vcov
+coef.saft_fit <- function(object, ...) object$coefs
+summary.saft_fit <- function(object, ...) {
+    est <- coef(object)
+    se <- sqrt(diag(vcov(object)))
+    zval <- est/se
+    ans <- c(object,
+             list(table = cbind(Estimate = est,
+                                       `Std. Error` = se,
+                                       `z value` = zval,
+                                       `Pr(>|z|)` = 2 * pnorm(abs(zval), lower.tail = FALSE))))
+    class(ans) <- "summary.saft_fit"
+    ans
+}
+print.summary.saft_fit <- function(object, ...) {
+    stats::printCoefmat(object$table)
+    cat("log(likelihood) =", object$logLik, "\n")
+}
+coef.summary.saft_fit <- function(object) object$table
+
