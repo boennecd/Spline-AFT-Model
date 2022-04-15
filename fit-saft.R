@@ -210,7 +210,8 @@ saft_fit <- function(y, X, event, n_knots, gl_dat, basis_type = c("bs", "ns"),
     ll_func(res$par)
 
   coefs <- setNames(res$par, c(colnames(X), paste0("gamma", seq_len(n_gamma))))
-  hess <- optimHess(coefs, ll_func, d_ll_func)
+  hess <- optimHess(coefs, ll_func,
+                    if(fix_boundary_knots) d_ll_func else NULL)
   vcov <- try(solve(hess))
 
   structure(list(coefs = coefs, logLik = -res$value, optim = res,

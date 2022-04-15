@@ -1,6 +1,6 @@
 
-R version 3.6.3 (2020-02-29) -- "Holding the Windsock"
-Copyright (C) 2020 The R Foundation for Statistical Computing
+R version 4.1.2 (2021-11-01) -- "Bird Hippie"
+Copyright (C) 2021 The R Foundation for Statistical Computing
 Platform: x86_64-pc-linux-gnu (64-bit)
 
 R is free software and comes with ABSOLUTELY NO WARRANTY.
@@ -18,12 +18,14 @@ Type 'demo()' for some demos, 'help()' for on-line help, or
 Type 'q()' to quit R.
 
 * Project '~/Dropbox/skole_backup/postdoc/Spline-AFT-Model' loaded. [renv 0.12.3]
+Warning message:
+Project requested R version '3.6.3' but '4.1.2' is currently being used 
 > # source the file with the estimation code
 > source("fit-saft.R")
 > 
 > # prepare colon data set
 > colon_use <- within(
-+   colon[complete.cases(colon) & colon$etype==2, ], {
++   survival::colon[complete.cases(survival::colon) & survival::colon$etype==2, ], {
 +     time <- time/365.25
 +     age_c <- scale(age)
 +   })
@@ -45,7 +47,7 @@ Type 'q()' to quit R.
 +   res_bs <- saft_fit(y = y, X = X, event = event, n_knots = 2, gl_dat = gl_dat,
 +                      basis_type = "bs"))
    user  system elapsed 
-  1.490   0.012   1.502 
+  1.820   0.008   1.828 
 > res_bs$coefs
           rxLev       rxLev+5FU             sex           age_c        obstruct 
     -0.03319203     -0.19955858      0.06334079      0.10275162      0.58151835 
@@ -54,7 +56,7 @@ Type 'q()' to quit R.
 factor(extent)3 factor(extent)4            surg           node4          gamma1 
      0.95986300      1.39783711      0.29433033      0.93147169     -5.53918378 
          gamma2          gamma3          gamma4          gamma5          gamma6 
-    -0.35151418      2.43786821      2.48229667      2.45939321      2.41061525 
+    -0.35151417      2.43786821      2.48229666      2.45939321      2.41061525 
 > res_bs$logLik
 [1] -1283.816
 > 
@@ -63,7 +65,7 @@ factor(extent)3 factor(extent)4            surg           node4          gamma1
 +   res_bs_cpp <- saft_fit_cpp(y = y, X = X, event = event, n_knots = 2,
 +                              gl_dat = gl_dat, basis_type = "bs"))
    user  system elapsed 
-  1.172   0.000   1.172 
+  1.377   0.000   1.377 
 > 
 > all.equal(res_bs[c("coefs", "par")], res_bs_cpp[c("coefs", "par")])
 [1] TRUE
@@ -74,7 +76,7 @@ factor(extent)3 factor(extent)4            surg           node4          gamma1
 +     y = y, X = X, event = event, n_knots = 2, gl_dat = gl_dat,
 +     basis_type = "bs", fix_boundary_knots = FALSE, maxit = 10000L))
    user  system elapsed 
- 25.399   0.000  25.402 
+   27.8     0.0    27.8 
 > res_bs_non_fix$coefs
           rxLev       rxLev+5FU             sex           age_c        obstruct 
      0.03661242     -0.22065195      0.06999832      0.08299311      0.45771833 
@@ -92,7 +94,7 @@ factor(extent)3 factor(extent)4            surg           node4          gamma1
 +   res_ns <- saft_fit(y = y, X = X, event = event, n_knots = 4, gl_dat = gl_dat,
 +                      basis_type = "ns"))
    user  system elapsed 
-  1.391   0.000   1.392 
+  1.705   0.000   1.710 
 > res_ns$coefs
           rxLev       rxLev+5FU             sex           age_c        obstruct 
      0.01493506     -0.12867535      0.02292319      0.11321380      0.31930750 
@@ -110,7 +112,7 @@ factor(extent)3 factor(extent)4            surg           node4          gamma1
 +   res_ns_cpp <- saft_fit_cpp(y = y, X = X, event = event, n_knots = 4,
 +                              gl_dat = gl_dat, basis_type = "ns"))
    user  system elapsed 
-  1.150   0.000   1.149 
+  1.423   0.000   1.422 
 > 
 > all.equal(res_ns[c("coefs", "par")], res_ns_cpp[c("coefs", "par")])
 [1] TRUE
@@ -163,7 +165,7 @@ Xfactor(extent)4            Xsurg           Xnode4
 +                          gl_dat = gl_dat, use_integrate = TRUE,
 +                          basis_type = "ns", check_grads = FALSE))
    user  system elapsed 
- 18.127   0.000  18.130 
+ 20.106   0.000  20.107 
 > rbind(res_ns$coefs, res_ns_int$coefs)
           rxLev  rxLev+5FU        sex     age_c  obstruct     perfor    adhere
 [1,] 0.01493506 -0.1286754 0.02292319 0.1132138 0.3193075 -0.2299108 0.2039561
@@ -184,4 +186,4 @@ Gauss–Legendre quadrature             R's integrate
 > 
 > proc.time()
    user  system elapsed 
- 57.048   0.289  57.337 
+ 61.745   0.309  62.084 
