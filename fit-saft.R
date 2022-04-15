@@ -214,10 +214,13 @@ saft_fit <- function(y, X, event, n_knots, gl_dat, basis_type = c("bs", "ns"),
                     if(fix_boundary_knots) d_ll_func else NULL)
   vcov <- try(solve(hess))
 
-  structure(list(coefs = coefs, logLik = -res$value, optim = res,
-                 eval_basis = eval_basis_out, beta = head(coefs, n_beta),
-                 gamma = tail(coefs, n_gamma), vcov = vcov),
-            class="saft_fit")
+  structure(
+    list(
+      coefs = coefs, logLik = -res$value, optim = res,
+      eval_basis = eval_basis_out, beta = head(coefs, n_beta),
+      gamma = tail(coefs, n_gamma), vcov = vcov,
+      ll = ll_func, grad = d_ll_func),
+    class="saft_fit")
 }
 
 # estimates a spline-based AFT with C++.
@@ -300,9 +303,11 @@ saft_fit_cpp <- function(
   hess <- optimHess(coefs, ll_func, d_ll_func)
   vcov <- try(solve(hess))
 
-  structure(list(coefs = coefs, logLik = -res$value, optim = res,
-                 beta = head(coefs, n_beta), gamma = tail(coefs, n_gamma), vcov = vcov),
-            class="saft_fit")
+  structure(
+    list(coefs = coefs, logLik = -res$value, optim = res,
+         beta = head(coefs, n_beta), gamma = tail(coefs, n_gamma), vcov = vcov,
+         ll = ll_func, grad = d_ll_func),
+    class="saft_fit")
 
 }
 

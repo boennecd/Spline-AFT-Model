@@ -47,7 +47,7 @@ Project requested R version '3.6.3' but '4.1.2' is currently being used
 +   res_bs <- saft_fit(y = y, X = X, event = event, n_knots = 2, gl_dat = gl_dat,
 +                      basis_type = "bs"))
    user  system elapsed 
-  1.820   0.008   1.828 
+  1.783   0.012   1.795 
 > res_bs$coefs
           rxLev       rxLev+5FU             sex           age_c        obstruct 
     -0.03319203     -0.19955858      0.06334079      0.10275162      0.58151835 
@@ -65,7 +65,7 @@ factor(extent)3 factor(extent)4            surg           node4          gamma1
 +   res_bs_cpp <- saft_fit_cpp(y = y, X = X, event = event, n_knots = 2,
 +                              gl_dat = gl_dat, basis_type = "bs"))
    user  system elapsed 
-  1.377   0.000   1.377 
+  1.339   0.004   1.343 
 > 
 > all.equal(res_bs[c("coefs", "par")], res_bs_cpp[c("coefs", "par")])
 [1] TRUE
@@ -76,7 +76,7 @@ factor(extent)3 factor(extent)4            surg           node4          gamma1
 +     y = y, X = X, event = event, n_knots = 2, gl_dat = gl_dat,
 +     basis_type = "bs", fix_boundary_knots = FALSE, maxit = 10000L))
    user  system elapsed 
-   27.8     0.0    27.8 
+ 29.420   0.000  29.422 
 > res_bs_non_fix$coefs
           rxLev       rxLev+5FU             sex           age_c        obstruct 
      0.03661242     -0.22065195      0.06999832      0.08299311      0.45771833 
@@ -94,7 +94,7 @@ factor(extent)3 factor(extent)4            surg           node4          gamma1
 +   res_ns <- saft_fit(y = y, X = X, event = event, n_knots = 4, gl_dat = gl_dat,
 +                      basis_type = "ns"))
    user  system elapsed 
-  1.705   0.000   1.710 
+  1.858   0.000   1.859 
 > res_ns$coefs
           rxLev       rxLev+5FU             sex           age_c        obstruct 
      0.01493506     -0.12867535      0.02292319      0.11321380      0.31930750 
@@ -112,7 +112,7 @@ factor(extent)3 factor(extent)4            surg           node4          gamma1
 +   res_ns_cpp <- saft_fit_cpp(y = y, X = X, event = event, n_knots = 4,
 +                              gl_dat = gl_dat, basis_type = "ns"))
    user  system elapsed 
-  1.423   0.000   1.422 
+  1.460   0.000   1.459 
 > 
 > all.equal(res_ns[c("coefs", "par")], res_ns_cpp[c("coefs", "par")])
 [1] TRUE
@@ -165,7 +165,7 @@ Xfactor(extent)4            Xsurg           Xnode4
 +                          gl_dat = gl_dat, use_integrate = TRUE,
 +                          basis_type = "ns", check_grads = FALSE))
    user  system elapsed 
- 20.106   0.000  20.107 
+ 21.202   0.000  21.204 
 > rbind(res_ns$coefs, res_ns_int$coefs)
           rxLev  rxLev+5FU        sex     age_c  obstruct     perfor    adhere
 [1,] 0.01493506 -0.1286754 0.02292319 0.1132138 0.3193075 -0.2299108 0.2039561
@@ -186,4 +186,4 @@ Gauss–Legendre quadrature             R's integrate
 > 
 > proc.time()
    user  system elapsed 
- 61.745   0.309  62.084 
+ 64.546   0.336  64.895 
